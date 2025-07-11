@@ -91,6 +91,9 @@ namespace KeyboardLayoutSwitcher
 
         [DllImport("user32.dll")]
         private static extern short GetKeyState(int nVirtKey);
+        
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
 
         // Constants
         private const uint MOD_ALT = 0x0001;
@@ -118,6 +121,9 @@ namespace KeyboardLayoutSwitcher
         private int currentLayoutIndex = 0;
         private SwitchingAlgorithm algorithm = SwitchingAlgorithm.Toggle; // Default to toggle
         private bool isShiftReleased = true; // Track if Shift is released
+
+        private System.Windows.Forms.Timer hotkeyReleaseTimer;
+        private bool hotkeyActive = false;
 
         public enum SwitchingAlgorithm
         {
@@ -253,6 +259,7 @@ namespace KeyboardLayoutSwitcher
         {
             if (hotkeyId == HOTKEY_ID_ALT_SHIFT)
             {
+                hotkeyActive = true;
                 if (isShiftReleased)
                 {
                     isShiftReleased = false; // Reset flag after handling
@@ -267,8 +274,32 @@ namespace KeyboardLayoutSwitcher
                     SwitchWithCycleAlgorithm();
                     Trace.WriteLine("Using cycle algorithm for Alt+Shift hotkey.");
                 }
-
+                StartHotkeyReleaseTimer();
             }
+        }
+
+        private void StartHotkeyReleaseTimer()
+        {
+            if (hotkeyReleaseTimer == null)
+            {
+                hotkeyReleaseTimer = new System.Windows.Forms.Timer();
+                hotkeyReleaseTimer.Interval = 200; // ms
+                hotkeyReleaseTimer.Tick += (s, e) =>
+                {
+                    // Check if Shift and Alt are up
+                    bool shiftUp = (GetAsyncKeyState(VK_SHIFT) & 0x8000) == 0;
+
+                    if (shiftUp && hotkeyActive)
+                    {
+                        isShiftReleased = true;
+                        // Simulate hotkey release event here
+                        Trace.WriteLine("Shift released by timer.");
+                        hotkeyReleaseTimer.Stop();
+                    }
+                };
+            }
+            hotkeyReleaseTimer.Stop();
+            hotkeyReleaseTimer.Start();
         }
 
         private void SwitchWithToggleAlgorithm()
