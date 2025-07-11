@@ -8,7 +8,10 @@ class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
-        var switcher = new KeyboardSwitcher();
+        var layoutManager = new WindowsKeyboardLayoutManager();
+        var hotkeyManager = new WindowsHotkeyManager();
+        var systemTray = new WindowsSystemTray();
+        var switcher = new KeyboardSwitcher(layoutManager, hotkeyManager, systemTray);
         switcher.Run();
     }
 }
