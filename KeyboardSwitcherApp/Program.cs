@@ -102,6 +102,7 @@ namespace KeyboardLayoutSwitcher
         private const uint KLF_ACTIVATE = 0x00000001;
         private const int VK_SHIFT = 0x10;
         private const int LEFT_SHIFT = 0xA0;
+        private const int LEFT_SHIFT_ALT = 0xA4;
         private const int WH_KEYBOARD_LL = 13;
         private const int WM_KEYDOWN = 0x0100;
         private const int WM_KEYUP = 0x0101;
@@ -116,6 +117,7 @@ namespace KeyboardLayoutSwitcher
         private List<IntPtr> recentLayouts = new List<IntPtr>(); // Track recently used layouts
         private int currentLayoutIndex = 0;
         private SwitchingAlgorithm algorithm = SwitchingAlgorithm.Toggle; // Default to toggle
+        private bool isShiftReleased = true; // Track if Shift is released
 
         public enum SwitchingAlgorithm
         {
@@ -226,12 +228,15 @@ namespace KeyboardLayoutSwitcher
                     if (wParam == (IntPtr)WM_KEYDOWN)
                     {
                         // Shift pressed
-                        Trace.WriteLine("Shift pressed");
+                        //Trace.WriteLine("Shift pressed");
                     }
                     else if (wParam == (IntPtr)WM_KEYUP)
                     {
                         // Shift released
-                        Trace.WriteLine("Shift released");
+                        //Trace.WriteLine("Shift released");
+                        isShiftReleased = true; // Set flag for release
+                        Trace.WriteLine("Shift released detected in hook callback.");
+                        Trace.WriteLine(vkCode);
                     }
                 }
             }
@@ -248,19 +253,21 @@ namespace KeyboardLayoutSwitcher
         {
             if (hotkeyId == HOTKEY_ID_ALT_SHIFT)
             {
-                // Check if Shift is still being held down
-                bool shiftStillPressed = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-
-                if (shiftStillPressed)
+                if (isShiftReleased)
                 {
-                    // Shift is still held - cycle through layouts
-                    SwitchWithCycleAlgorithm();
+                    isShiftReleased = false; // Reset flag after handling
+                    Trace.WriteLine("Shift released state reset.");
+                    // Shift was released - toggle between recent layouts
+                    SwitchWithToggleAlgorithm();
+                    Trace.WriteLine("Using toggle algorithm for Alt+Shift hotkey.");
                 }
                 else
                 {
-                    // Shift was released - toggle between recent layouts
-                    SwitchWithToggleAlgorithm();
+                    // Shift is still held - cycle through layouts
+                    SwitchWithCycleAlgorithm();
+                    Trace.WriteLine("Using cycle algorithm for Alt+Shift hotkey.");
                 }
+
             }
         }
 
@@ -406,8 +413,9 @@ namespace KeyboardLayoutSwitcher
                     trayIcon.Text = $"Keyboard Layout Switcher - {layoutName}";
 
                     // Show balloon tip
-                    trayIcon.ShowBalloonTip(1000, "Layout Changed",
-                        $"Switched to {layoutName}", ToolTipIcon.Info);
+                    /*trayIcon.ShowBalloonTip(1000, "Layout Changed",
+                        $"Switched to {layoutName}", ToolTipIcon.Info);*/
+                    Trace.WriteLine($"Switched to layout: {layoutName}");
                 }
             }
             catch (Exception ex)
@@ -435,7 +443,7 @@ namespace KeyboardLayoutSwitcher
         {
             IntPtr currentLayout = GetCurrentLayout();
             string layoutName = GetLayoutName(currentLayout);
-            MessageBox.Show($"Current Layout: {layoutName}", "Keyboard Layout Info");
+            Trace.WriteLine($"Current layout: {layoutName}");
         }
 
         private IntPtr GetCurrentLayout()
