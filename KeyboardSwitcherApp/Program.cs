@@ -6,7 +6,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-namespace KeyboardSwitcherApp
+namespace KeyboardLayoutSwitcher
 {
     // Custom form class to handle WndProc
     public class HotkeyForm : Form
@@ -79,16 +79,16 @@ namespace KeyboardSwitcherApp
         private const uint KLF_ACTIVATE = 0x00000001;
 
         // Hotkey IDs
-        private const int HOTKEY_ID_SWITCH = 1;
-        private const int HOTKEY_ID_NEXT = 2;
-        private const int HOTKEY_ID_PREVIOUS = 3;
+        private const int HOTKEY_ID_TOGGLE = 1;
+        private const int HOTKEY_ID_CYCLE = 2;
 
         private NotifyIcon trayIcon;
         private ContextMenuStrip contextMenu;
         private HotkeyForm hiddenForm;
         private List<IntPtr> availableLayouts;
+        private List<IntPtr> recentLayouts = new List<IntPtr>(); // Track recently used layouts
         private int currentLayoutIndex = 0;
-        private SwitchingAlgorithm algorithm = SwitchingAlgorithm.Cycle;
+        private SwitchingAlgorithm algorithm = SwitchingAlgorithm.Toggle; // Default to toggle
 
         public enum SwitchingAlgorithm
         {
@@ -169,37 +169,43 @@ namespace KeyboardSwitcherApp
 
         private void RegisterHotkeys()
         {
-            // Register Ctrl+Shift+Space for main switch
-            RegisterHotKey(hiddenForm.Handle, HOTKEY_ID_SWITCH,
-                MOD_CONTROL | MOD_SHIFT, (uint)Keys.Space);
+            // Register Alt+Left Shift for toggle algorithm
+            RegisterHotKey(hiddenForm.Handle, HOTKEY_ID_TOGGLE,
+                MOD_ALT | MOD_SHIFT, (uint)Keys.LShiftKey);
 
-            // Register Ctrl+Alt+Right for next layout
-            RegisterHotKey(hiddenForm.Handle, HOTKEY_ID_NEXT,
-                MOD_CONTROL | MOD_ALT, (uint)Keys.Right);
-
-            // Register Ctrl+Alt+Left for previous layout
-            RegisterHotKey(hiddenForm.Handle, HOTKEY_ID_PREVIOUS,
-                MOD_CONTROL | MOD_ALT, (uint)Keys.Left);
+            // Register Alt for cycle switching
+            RegisterHotKey(hiddenForm.Handle, HOTKEY_ID_CYCLE,
+                MOD_ALT, (uint)Keys.Menu); // Keys.Menu is the Alt key
         }
 
         private void OnHotkeyPressed(int hotkeyId)
         {
             switch (hotkeyId)
             {
-                case HOTKEY_ID_SWITCH:
-                    SwitchKeyboardLayout();
+                case HOTKEY_ID_TOGGLE:
+                    SwitchWithToggleAlgorithm();
                     break;
-                case HOTKEY_ID_NEXT:
-                    SwitchToNextLayout();
-                    break;
-                case HOTKEY_ID_PREVIOUS:
-                    SwitchToPreviousLayout();
+                case HOTKEY_ID_CYCLE:
+                    SwitchWithCycleAlgorithm();
                     break;
             }
         }
 
+        private void SwitchWithToggleAlgorithm()
+        {
+            // Always use toggle algorithm for this hotkey
+            SwitchByToggle();
+        }
+
+        private void SwitchWithCycleAlgorithm()
+        {
+            // Always use cycle algorithm for this hotkey
+            SwitchByCycle();
+        }
+
         private void SwitchKeyboardLayout()
         {
+            // Use the currently selected algorithm
             switch (algorithm)
             {
                 case SwitchingAlgorithm.Cycle:
@@ -220,16 +226,65 @@ namespace KeyboardSwitcherApp
         private void SwitchByCycle()
         {
             currentLayoutIndex = (currentLayoutIndex + 1) % availableLayouts.Count;
-            ActivateLayout(availableLayouts[currentLayoutIndex]);
+            IntPtr targetLayout = availableLayouts[currentLayoutIndex];
+            ActivateLayout(targetLayout);
+            UpdateRecentLayouts(targetLayout);
+        }
+
+        private void UpdateRecentLayouts(IntPtr layout)
+        {
+            // Remove if already in list
+            recentLayouts.Remove(layout);
+
+            // Add to front
+            recentLayouts.Insert(0, layout);
+
+            // Keep only last 2 layouts
+            if (recentLayouts.Count > 2)
+            {
+                recentLayouts.RemoveAt(2);
+            }
         }
 
         private void SwitchByToggle()
         {
-            // Simple toggle between first two layouts
+            // Enhanced toggle that remembers the last two used layouts
+            if (recentLayouts.Count == 0)
+            {
+                // First time - add current layout to recent list
+                IntPtr currentLayout = GetCurrentLayout();
+                if (currentLayout != IntPtr.Zero)
+                {
+                    recentLayouts.Add(currentLayout);
+                }
+            }
+
             if (availableLayouts.Count >= 2)
             {
-                currentLayoutIndex = currentLayoutIndex == 0 ? 1 : 0;
-                ActivateLayout(availableLayouts[currentLayoutIndex]);
+                IntPtr targetLayout;
+
+                if (recentLayouts.Count >= 2)
+                {
+                    // Toggle between the two most recent layouts
+                    IntPtr currentLayout = GetCurrentLayout();
+                    if (currentLayout == recentLayouts[0])
+                    {
+                        targetLayout = recentLayouts[1];
+                    }
+                    else
+                    {
+                        targetLayout = recentLayouts[0];
+                    }
+                }
+                else
+                {
+                    // Fallback to simple toggle between first two available layouts
+                    currentLayoutIndex = currentLayoutIndex == 0 ? 1 : 0;
+                    targetLayout = availableLayouts[currentLayoutIndex];
+                }
+
+                ActivateLayout(targetLayout);
+                UpdateRecentLayouts(targetLayout);
             }
         }
 
@@ -324,9 +379,8 @@ namespace KeyboardSwitcherApp
         private void Exit(object sender, EventArgs e)
         {
             // Unregister hotkeys
-            UnregisterHotKey(hiddenForm.Handle, HOTKEY_ID_SWITCH);
-            UnregisterHotKey(hiddenForm.Handle, HOTKEY_ID_NEXT);
-            UnregisterHotKey(hiddenForm.Handle, HOTKEY_ID_PREVIOUS);
+            UnregisterHotKey(hiddenForm.Handle, HOTKEY_ID_TOGGLE);
+            UnregisterHotKey(hiddenForm.Handle, HOTKEY_ID_CYCLE);
 
             // Clean up
             trayIcon.Visible = false;
@@ -340,9 +394,8 @@ namespace KeyboardSwitcherApp
         {
             Console.WriteLine("Keyboard Layout Switcher started.");
             Console.WriteLine("Hotkeys:");
-            Console.WriteLine("  Ctrl+Shift+Space: Switch layout (algorithm-based)");
-            Console.WriteLine("  Ctrl+Alt+Right: Next layout");
-            Console.WriteLine("  Ctrl+Alt+Left: Previous layout");
+            Console.WriteLine("  Alt+Left Shift: Toggle between two most recent layouts");
+            Console.WriteLine("  Alt: Cycle through all available layouts");
             Console.WriteLine("Right-click the tray icon for options.");
 
             Application.Run();
