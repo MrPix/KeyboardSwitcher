@@ -8,6 +8,37 @@ using System.Windows.Forms;
 
 namespace KeyboardSwitcherApp
 {
+    // Custom form class to handle WndProc
+    public class HotkeyForm : Form
+    {
+        public event Action<int> HotkeyPressed;
+
+        public HotkeyForm()
+        {
+            WindowState = FormWindowState.Minimized;
+            ShowInTaskbar = false;
+            Visible = false;
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_HOTKEY = 0x0312;
+
+            if (m.Msg == WM_HOTKEY)
+            {
+                int hotkeyId = m.WParam.ToInt32();
+                HotkeyPressed?.Invoke(hotkeyId);
+            }
+
+            base.WndProc(ref m);
+        }
+
+        protected override void SetVisibleCore(bool value)
+        {
+            base.SetVisibleCore(false);
+        }
+    }
+
     public class KeyboardSwitcher
     {
         // Windows API imports
@@ -54,7 +85,7 @@ namespace KeyboardSwitcherApp
 
         private NotifyIcon trayIcon;
         private ContextMenuStrip contextMenu;
-        private Form hiddenForm;
+        private HotkeyForm hiddenForm;
         private List<IntPtr> availableLayouts;
         private int currentLayoutIndex = 0;
         private SwitchingAlgorithm algorithm = SwitchingAlgorithm.Cycle;
@@ -77,13 +108,8 @@ namespace KeyboardSwitcherApp
         private void InitializeComponent()
         {
             // Create hidden form to receive hotkey messages
-            hiddenForm = new Form()
-            {
-                WindowState = FormWindowState.Minimized,
-                ShowInTaskbar = false,
-                Visible = false
-            };
-            hiddenForm.Load += (s, e) => hiddenForm.Hide();
+            hiddenForm = new HotkeyForm();
+            hiddenForm.HotkeyPressed += OnHotkeyPressed;
 
             // Create system tray icon
             trayIcon = new NotifyIcon()
@@ -154,38 +180,22 @@ namespace KeyboardSwitcherApp
             // Register Ctrl+Alt+Left for previous layout
             RegisterHotKey(hiddenForm.Handle, HOTKEY_ID_PREVIOUS,
                 MOD_CONTROL | MOD_ALT, (uint)Keys.Left);
-
-            // Override WndProc to handle hotkey messages
-            var originalWndProc = hiddenForm.GetType().GetMethod("WndProc",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-            hiddenForm.GetType().GetMethod("WndProc",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         }
 
-        protected override void WndProc(ref Message m)
+        private void OnHotkeyPressed(int hotkeyId)
         {
-            const int WM_HOTKEY = 0x0312;
-
-            if (m.Msg == WM_HOTKEY)
+            switch (hotkeyId)
             {
-                int hotkeyId = m.WParam.ToInt32();
-
-                switch (hotkeyId)
-                {
-                    case HOTKEY_ID_SWITCH:
-                        SwitchKeyboardLayout();
-                        break;
-                    case HOTKEY_ID_NEXT:
-                        SwitchToNextLayout();
-                        break;
-                    case HOTKEY_ID_PREVIOUS:
-                        SwitchToPreviousLayout();
-                        break;
-                }
+                case HOTKEY_ID_SWITCH:
+                    SwitchKeyboardLayout();
+                    break;
+                case HOTKEY_ID_NEXT:
+                    SwitchToNextLayout();
+                    break;
+                case HOTKEY_ID_PREVIOUS:
+                    SwitchToPreviousLayout();
+                    break;
             }
-
-            base.WndProc(ref m);
         }
 
         private void SwitchKeyboardLayout()
@@ -339,24 +349,7 @@ namespace KeyboardSwitcherApp
         }
     }
 
-    // Custom form class to handle WndProc
-    public class HotkeyForm : Form
-    {
-        public event Action<int> HotkeyPressed;
 
-        protected override void WndProc(ref Message m)
-        {
-            const int WM_HOTKEY = 0x0312;
-
-            if (m.Msg == WM_HOTKEY)
-            {
-                int hotkeyId = m.WParam.ToInt32();
-                HotkeyPressed?.Invoke(hotkeyId);
-            }
-
-            base.WndProc(ref m);
-        }
-    }
 
     class Program
     {
