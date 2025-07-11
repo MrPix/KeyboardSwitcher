@@ -41,6 +41,26 @@ namespace KeyboardLayoutSwitcher
 
     public class KeyboardSwitcher
     {
+        // Add at the top of the class (inside KeyboardSwitcher)
+        private IntPtr hookId = IntPtr.Zero;
+        private LowLevelKeyboardProc hookCallback;
+
+        // Windows API for keyboard hook
+        private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+
         // Windows API imports
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
@@ -69,6 +89,9 @@ namespace KeyboardLayoutSwitcher
         [DllImport("user32.dll")]
         private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
+        [DllImport("user32.dll")]
+        private static extern short GetKeyState(int nVirtKey);
+
         // Constants
         private const uint MOD_ALT = 0x0001;
         private const uint MOD_CONTROL = 0x0002;
@@ -77,10 +100,14 @@ namespace KeyboardLayoutSwitcher
         private const uint WM_INPUTLANGCHANGEREQUEST = 0x0050;
         private const uint INPUTLANGCHANGE_SYSCHARSET = 0x0001;
         private const uint KLF_ACTIVATE = 0x00000001;
+        private const int VK_SHIFT = 0x10;
+        private const int LEFT_SHIFT = 0xA0;
+        private const int WH_KEYBOARD_LL = 13;
+        private const int WM_KEYDOWN = 0x0100;
+        private const int WM_KEYUP = 0x0101;
 
-        // Hotkey IDs
-        private const int HOTKEY_ID_TOGGLE = 1;
-        private const int HOTKEY_ID_CYCLE = 2;
+        // Hotkey ID
+        private const int HOTKEY_ID_ALT_SHIFT = 1;
 
         private NotifyIcon trayIcon;
         private ContextMenuStrip contextMenu;
@@ -102,6 +129,7 @@ namespace KeyboardLayoutSwitcher
         {
             InitializeComponent();
             LoadAvailableLayouts();
+            SetupKeyboardHook();
             RegisterHotkeys();
         }
 
@@ -167,27 +195,72 @@ namespace KeyboardLayoutSwitcher
             }
         }
 
+        // Call this in your constructor or InitializeComponent
+        private void SetupKeyboardHook()
+        {
+            hookCallback = HookCallback;
+            using (var curProcess = Process.GetCurrentProcess())
+            using (var curModule = curProcess.MainModule)
+            {
+                hookId = SetWindowsHookEx(WH_KEYBOARD_LL, hookCallback, GetModuleHandle(curModule.ModuleName), 0);
+            }
+        }
+        // Unhook when exiting
+        private void RemoveKeyboardHook()
+        {
+            if (hookId != IntPtr.Zero)
+            {
+                UnhookWindowsHookEx(hookId);
+                hookId = IntPtr.Zero;
+            }
+        }
+
+        // The actual hook callback
+        private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0)
+            {
+                int vkCode = Marshal.ReadInt32(lParam);
+                if (vkCode == LEFT_SHIFT)
+                {
+                    if (wParam == (IntPtr)WM_KEYDOWN)
+                    {
+                        // Shift pressed
+                        Trace.WriteLine("Shift pressed");
+                    }
+                    else if (wParam == (IntPtr)WM_KEYUP)
+                    {
+                        // Shift released
+                        Trace.WriteLine("Shift released");
+                    }
+                }
+            }
+            return CallNextHookEx(hookId, nCode, wParam, lParam);
+        }
+
         private void RegisterHotkeys()
         {
-            // Register Alt+Left Shift for toggle algorithm
-            RegisterHotKey(hiddenForm.Handle, HOTKEY_ID_TOGGLE,
-                MOD_ALT | MOD_SHIFT, (uint)Keys.LShiftKey);
-
-            // Register Shift+Alt for cycle switching
-            RegisterHotKey(hiddenForm.Handle, HOTKEY_ID_CYCLE,
-                MOD_SHIFT | MOD_ALT, (uint)Keys.Menu); // Keys.Menu is the Alt key
+            // Register Alt+Shift combination
+            RegisterHotKey(hiddenForm.Handle, HOTKEY_ID_ALT_SHIFT, MOD_SHIFT | MOD_ALT, (uint)Keys.Menu); // Keys.Menu is the Alt key
         }
 
         private void OnHotkeyPressed(int hotkeyId)
         {
-            switch (hotkeyId)
+            if (hotkeyId == HOTKEY_ID_ALT_SHIFT)
             {
-                case HOTKEY_ID_TOGGLE:
-                    SwitchWithToggleAlgorithm();
-                    break;
-                case HOTKEY_ID_CYCLE:
+                // Check if Shift is still being held down
+                bool shiftStillPressed = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+
+                if (shiftStillPressed)
+                {
+                    // Shift is still held - cycle through layouts
                     SwitchWithCycleAlgorithm();
-                    break;
+                }
+                else
+                {
+                    // Shift was released - toggle between recent layouts
+                    SwitchWithToggleAlgorithm();
+                }
             }
         }
 
@@ -378,9 +451,9 @@ namespace KeyboardLayoutSwitcher
 
         private void Exit(object sender, EventArgs e)
         {
-            // Unregister hotkeys
-            UnregisterHotKey(hiddenForm.Handle, HOTKEY_ID_TOGGLE);
-            UnregisterHotKey(hiddenForm.Handle, HOTKEY_ID_CYCLE);
+            // Unregister hotkey
+            UnregisterHotKey(hiddenForm.Handle, HOTKEY_ID_ALT_SHIFT);
+            RemoveKeyboardHook();
 
             // Clean up
             trayIcon.Visible = false;
@@ -394,8 +467,8 @@ namespace KeyboardLayoutSwitcher
         {
             Console.WriteLine("Keyboard Layout Switcher started.");
             Console.WriteLine("Hotkeys:");
-            Console.WriteLine("  Alt+Left Shift: Toggle between two most recent layouts");
-            Console.WriteLine("  Shift+Alt: Cycle through all available layouts");
+            Console.WriteLine("  Alt+Shift (release quickly): Toggle between two most recent layouts");
+            Console.WriteLine("  Alt+Shift (hold Shift): Cycle through all available layouts");
             Console.WriteLine("Right-click the tray icon for options.");
 
             Application.Run();
