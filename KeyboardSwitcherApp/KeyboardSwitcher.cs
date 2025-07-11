@@ -60,6 +60,15 @@ public class KeyboardSwitcher
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
 
+    // Import ActivateKeyboardLayout
+    [DllImport("user32.dll")]
+    private static extern IntPtr ActivateKeyboardLayout(IntPtr hkl, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
     // Constants
     private const uint MOD_ALT = 0x0001;
     private const uint MOD_CONTROL = 0x0002;
@@ -314,8 +323,8 @@ public class KeyboardSwitcher
         foreach (var layout in availableLayouts)
         {
             string layoutName = GetLayoutName(layout);
-            //Trace.WriteLine($"  {layout:X8} - {layoutName}");
-            Trace.WriteLine(layoutName);
+            Trace.WriteLine($" {layoutName} - {layout:X8}");
+            //Trace.WriteLine(layoutName);
         }
     }
 
@@ -367,25 +376,37 @@ public class KeyboardSwitcher
     {
         try
         {
+            IntPtr currentLayout = GetCurrentLayout();
+            string currentLayoutName = GetLayoutName(currentLayout);
+            Trace.WriteLine($"Current layout: {currentLayoutName}");
+
             IntPtr foregroundWindow = GetForegroundWindow();
-
-            if (foregroundWindow != IntPtr.Zero)
+            if (foregroundWindow == IntPtr.Zero)
+                return;
+            uint foregroundThreadId = GetWindowThreadProcessId(foregroundWindow, out _);
+            uint currentThreadId = GetCurrentThreadId();
+            bool attached = AttachThreadInput(currentThreadId, foregroundThreadId, true);
+            try
             {
-                // Send language change request to the foreground window
-                PostMessage(foregroundWindow, WM_INPUTLANGCHANGEREQUEST,
-                    new IntPtr(INPUTLANGCHANGE_SYSCHARSET), hkl);
-
-                string layoutName = GetLayoutName(hkl);
-                Console.WriteLine($"Switched to: {layoutName}");
-
-                // Update tray icon tooltip
-                trayIcon.Text = $"Keyboard Layout Switcher - {layoutName}";
-
-                // Show balloon tip
-                /*trayIcon.ShowBalloonTip(1000, "Layout Changed",
-                    $"Switched to {layoutName}", ToolTipIcon.Info);*/
-                Trace.WriteLine($"Switched to layout: {layoutName}");
+                ActivateKeyboardLayout(hkl, KLF_ACTIVATE);
             }
+            finally
+            {
+                if (attached)
+                    AttachThreadInput(currentThreadId, foregroundThreadId, false);
+            }
+
+
+            string layoutName = GetLayoutName(hkl);
+            Console.WriteLine($"Switched to: {layoutName}");
+
+            // Update tray icon tooltip
+            trayIcon.Text = $"Keyboard Layout Switcher - {layoutName}";
+
+            // Show balloon tip
+            /*trayIcon.ShowBalloonTip(1000, "Layout Changed",
+                $"Switched to {layoutName}", ToolTipIcon.Info);*/
+            Trace.WriteLine($"Switched to layout: {layoutName}");
         }
         catch (Exception ex)
         {
