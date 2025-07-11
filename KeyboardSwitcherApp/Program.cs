@@ -173,9 +173,9 @@ namespace KeyboardLayoutSwitcher
             RegisterHotKey(hiddenForm.Handle, HOTKEY_ID_TOGGLE,
                 MOD_ALT | MOD_SHIFT, (uint)Keys.LShiftKey);
 
-            // Register Alt for cycle switching
+            // Register Shift+Alt for cycle switching
             RegisterHotKey(hiddenForm.Handle, HOTKEY_ID_CYCLE,
-                MOD_ALT, (uint)Keys.Menu); // Keys.Menu is the Alt key
+                MOD_SHIFT | MOD_ALT, (uint)Keys.Menu); // Keys.Menu is the Alt key
         }
 
         private void OnHotkeyPressed(int hotkeyId)
@@ -395,7 +395,7 @@ namespace KeyboardLayoutSwitcher
             Console.WriteLine("Keyboard Layout Switcher started.");
             Console.WriteLine("Hotkeys:");
             Console.WriteLine("  Alt+Left Shift: Toggle between two most recent layouts");
-            Console.WriteLine("  Alt: Cycle through all available layouts");
+            Console.WriteLine("  Shift+Alt: Cycle through all available layouts");
             Console.WriteLine("Right-click the tray icon for options.");
 
             Application.Run();
