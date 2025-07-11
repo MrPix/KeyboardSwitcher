@@ -288,6 +288,7 @@ namespace KeyboardLayoutSwitcher
                 {
                     // Check if Shift and Alt are up
                     bool shiftUp = (GetAsyncKeyState(VK_SHIFT) & 0x8000) == 0;
+                    bool altUp = (GetAsyncKeyState((int)Keys.Menu) & 0x8000) == 0;
 
                     if (shiftUp && hotkeyActive)
                     {
@@ -295,6 +296,14 @@ namespace KeyboardLayoutSwitcher
                         // Simulate hotkey release event here
                         Trace.WriteLine("Shift released by timer.");
                         hotkeyReleaseTimer.Stop();
+                    }
+                    if (shiftUp && altUp && hotkeyActive)
+                    {
+                        // Reset hotkey active state
+                        hotkeyActive = false;
+                        MoveSelectedLayoutToFront();
+                        TraceLayouts();
+                        Trace.WriteLine("Hotkey released - moving selected layout to front.");
                     }
                 };
             }
@@ -325,104 +334,76 @@ namespace KeyboardLayoutSwitcher
                 case SwitchingAlgorithm.Toggle:
                     SwitchByToggle();
                     break;
-                case SwitchingAlgorithm.MostRecent:
-                    SwitchByMostRecent();
-                    break;
-                case SwitchingAlgorithm.Frequency:
-                    SwitchByFrequency();
-                    break;
             }
         }
 
-        private void SwitchByCycle()
-        {
-            currentLayoutIndex = (currentLayoutIndex + 1) % availableLayouts.Count;
-            IntPtr targetLayout = availableLayouts[currentLayoutIndex];
-            ActivateLayout(targetLayout);
-            UpdateRecentLayouts(targetLayout);
+        private void MoveSelectedLayoutToFront() 
+        { 
+            if (availableLayouts.Count < 2)
+                return;
+            IntPtr currentLayout = GetCurrentLayout();
+            int currentIndex = availableLayouts.IndexOf(currentLayout);
+            // If current layout is not in the list, fallback to first
+            if (currentIndex == -1)
+                currentIndex = 0;
+            // Move the selected layout to the front
+            availableLayouts.RemoveAt(currentIndex);
+            availableLayouts.Insert(0, currentLayout);
         }
 
-        private void UpdateRecentLayouts(IntPtr layout)
+        private void TraceLayouts()
         {
-            // Remove if already in list
-            recentLayouts.Remove(layout);
-
-            // Add to front
-            recentLayouts.Insert(0, layout);
-
-            // Keep only last 2 layouts
-            if (recentLayouts.Count > 2)
+            Console.WriteLine("Available layouts:");
+            foreach (var layout in availableLayouts)
             {
-                recentLayouts.RemoveAt(2);
+                string layoutName = GetLayoutName(layout);
+                //Trace.WriteLine($"  {layout:X8} - {layoutName}");
+                Trace.WriteLine(layoutName);
             }
         }
 
+        // Switch to the second layout in the list, then move it to the front
         private void SwitchByToggle()
         {
-            // Enhanced toggle that remembers the last two used layouts
-            if (recentLayouts.Count == 0)
+            if (availableLayouts.Count < 2)
+                return;
+
+            IntPtr currentLayout = GetCurrentLayout();
+            int currentIndex = availableLayouts.IndexOf(currentLayout);
+
+            // If current layout is not in the list, fallback to first
+            if (currentIndex == -1)
+                currentIndex = 0;
+
+            int targetIndex = (currentIndex == 0) ? 1 : 0;
+            IntPtr targetLayout = availableLayouts[targetIndex];
+
+            ActivateLayout(targetLayout);
+
+            // Move the selected layout to the front
+            //availableLayouts.Remove(targetLayout);
+            //availableLayouts.Insert(0, targetLayout);
+        }
+
+        // Move the current layout to the end, activate the new first layout
+        private void SwitchByCycle()
+        {
+            if (availableLayouts.Count < 2)
+                return;
+
+            IntPtr currentLayout = GetCurrentLayout();
+            int currentIndex = availableLayouts.IndexOf(currentLayout);
+
+            // If current layout is not in the list, fallback to first
+            if (currentIndex == -1)
+                currentIndex = 0;
+
+            currentIndex++;
+            if (currentIndex >= availableLayouts.Count)
             {
-                // First time - add current layout to recent list
-                IntPtr currentLayout = GetCurrentLayout();
-                if (currentLayout != IntPtr.Zero)
-                {
-                    recentLayouts.Add(currentLayout);
-                }
+                currentIndex = 0; // Wrap around
             }
-
-            if (availableLayouts.Count >= 2)
-            {
-                IntPtr targetLayout;
-
-                if (recentLayouts.Count >= 2)
-                {
-                    // Toggle between the two most recent layouts
-                    IntPtr currentLayout = GetCurrentLayout();
-                    if (currentLayout == recentLayouts[0])
-                    {
-                        targetLayout = recentLayouts[1];
-                    }
-                    else
-                    {
-                        targetLayout = recentLayouts[0];
-                    }
-                }
-                else
-                {
-                    // Fallback to simple toggle between first two available layouts
-                    currentLayoutIndex = currentLayoutIndex == 0 ? 1 : 0;
-                    targetLayout = availableLayouts[currentLayoutIndex];
-                }
-
-                ActivateLayout(targetLayout);
-                UpdateRecentLayouts(targetLayout);
-            }
-        }
-
-        private void SwitchByMostRecent()
-        {
-            // For simplicity, this cycles through layouts
-            // In a full implementation, you'd track usage history
-            SwitchByCycle();
-        }
-
-        private void SwitchByFrequency()
-        {
-            // For simplicity, this cycles through layouts
-            // In a full implementation, you'd track usage frequency
-            SwitchByCycle();
-        }
-
-        private void SwitchToNextLayout()
-        {
-            currentLayoutIndex = (currentLayoutIndex + 1) % availableLayouts.Count;
-            ActivateLayout(availableLayouts[currentLayoutIndex]);
-        }
-
-        private void SwitchToPreviousLayout()
-        {
-            currentLayoutIndex = (currentLayoutIndex - 1 + availableLayouts.Count) % availableLayouts.Count;
-            ActivateLayout(availableLayouts[currentLayoutIndex]);
+            ActivateLayout(availableLayouts[currentIndex]);
         }
 
         private void ActivateLayout(IntPtr hkl)
