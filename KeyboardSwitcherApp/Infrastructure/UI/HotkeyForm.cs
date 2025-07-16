@@ -1,9 +1,9 @@
-namespace KeyboardLayoutSwitcher;
+namespace KeyboardLayoutSwitcher.Infrastructure.UI;
 
 // Custom form class to handle WndProc
 public class HotkeyForm : Form
 {
-    public event Action<int>? HotkeyPressed; // Declare the event as nullable
+    public event Action<int>? HotkeyPressed;
 
     public HotkeyForm()
     {
@@ -29,4 +29,4 @@ public class HotkeyForm : Form
     {
         base.SetVisibleCore(false);
     }
-}
+} 
