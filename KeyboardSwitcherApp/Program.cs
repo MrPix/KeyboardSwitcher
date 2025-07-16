@@ -1,14 +1,26 @@
+using KeyboardLayoutSwitcher.Presentation;
+using WinFormsApp = System.Windows.Forms.Application;
+
 namespace KeyboardLayoutSwitcher;
 
 class Program
 {
     [STAThread]
-    static void Main()
+    static async Task Main()
     {
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
+        WinFormsApp.EnableVisualStyles();
+        WinFormsApp.SetCompatibleTextRenderingDefault(false);
 
-        var switcher = new KeyboardSwitcher();
-        switcher.Run();
+        using var bootstrapper = new ApplicationBootstrapper();
+        
+        try
+        {
+            await bootstrapper.StartAsync();
+            WinFormsApp.Run();
+        }
+        finally
+        {
+            await bootstrapper.StopAsync();
+        }
     }
 }
